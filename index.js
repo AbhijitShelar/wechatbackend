@@ -15,7 +15,7 @@ const app = express();
 app.use(bodyParser.urlencoded({ extended: false }));
 app.use(bodyParser.json());
 const corsOptions = {
-  origin: 'https://singular-beijinho-4bc7fe.netlify.app',
+  origin: "*",
   methods: "GET,HEAD,PUT,PATCH,POST,DELETE",
   credentials: true,
   optionsSuccessStatus: 204,
@@ -31,6 +31,7 @@ const io = initializeSocket(server);
 app.get("/", (req, res) => {
   res.json({ message: "server" });
 });
+
 //Creating database using mongoose(odm)
 const userInfo = mongoose.model("userInfo", {
   firstName: String,
@@ -66,19 +67,38 @@ app.post("/api/signup", async (req, res) => {
     });
   }
 });
-//Api to validate Token
-app.post("/api/validateToken", (req, res) => {
-  const { token } = req.body;
 
-  if (!token) {
+const validateTokenMiddleware = (req, res, next) => {
+  const authHeader = req.headers["authorization"];
+
+  if (authHeader) {
+    const token = authHeader.split(" ")[1];
+    if (!token) {
+      return res.json({
+        status: false,
+        message: "Token not provided",
+      });
+    }
+
+    jwt.verify(token, "123", (err, decoded) => {
+      if (err) {
+        return res.json({
+          status: false,
+          message: "Invalid token",
+        });
+      }
+
+      req.user = decoded;
+      next();
+    });
+  } else {
     return res.json({
       status: false,
-      message: "Token not provided",
+      message: "No token Provided",
     });
   }
-});
+};
 
-//Login Api And validation
 app.post("/api/login", async (req, res) => {
   try {
     const { email, password } = req.body;
@@ -115,7 +135,7 @@ app.post("/api/login", async (req, res) => {
 });
 
 //To get all Users List
-app.get("/api/userslist", async (req, res) => {
+app.get("/api/userslist", validateTokenMiddleware, async (req, res) => {
   try {
     const usersList = await User.find();
     res.json(usersList);
@@ -123,6 +143,18 @@ app.get("/api/userslist", async (req, res) => {
     console.log(error);
   }
 });
+//get account details of user
+app.post("/api/accountdetails", validateTokenMiddleware, async (req, res) => {
+  try {
+    const {myId}=req.body;
+
+    const accountDetails= await userInfo.findOne({myId});
+    res.json(accountDetails);
+  } catch (error) {
+    console.log(error);
+  }
+});
+
 
 const PORT = process.env.PORT || 3000;
 server.listen(PORT, () => {
